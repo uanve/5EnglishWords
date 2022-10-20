@@ -1,9 +1,18 @@
 import pandas as pd
+import random
 
 all_words = pd.read_csv("https://github.com/dwyl/english-words/raw/master/words_alpha.txt",header=None).dropna()[0]
 
 
-words = [w for w in all_words.values if len(w)==5][:1000]
+# Parameters
+N_words = 5
+
+words = [w for w in all_words.values if len(w)==5][:]
+random.shuffle(words)
+
+words = words[:]
+
+
 abc = ['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z']
 
 d = {}
@@ -27,28 +36,39 @@ model = cp_model.CpModel()
 # The array index is the column, and the value is the row.
 
 chosen_word_var = {}
-for w in range(len(words)):
-    chosen_word_var[w] = model.NewBoolVar('word_{}'.format(w)) 
+for k in range(N_words):
+    for w in range(len(words)):
+        chosen_word_var[k,w] = model.NewBoolVar('word_{}_{}'.format(k,w)) 
 
 
 word_var={}  
-for i in range(5):
-    for j in range(len(abc)):    
-        word_var[i,j] = model.NewBoolVar("w_{}_{}".format(i,j))
+for k in range(N_words):
+    for i in range(5):
+        for j in range(len(abc)):    
+            word_var[k,i,j] = model.NewBoolVar("w_{}_{}_{}".format(k,i,j))
 
 
 #define a word
-for j in range(len(abc)):
-    model.Add( sum(word_var[i,j] for i in range(5)) <= 1 )
+for k in range(N_words):
+    for j in range(len(abc)):
+        model.Add( sum(word_var[k,i,j] for i in range(5)) <= 1 )
 
 #if word i is chosen: then variable must be the same as chosen word
-for w in range(len(words)):
-    for i in range(5):
-         for j in range(len(abc)):   
-             model.Add( word_var[i,j] == word_to_numb(words[w])[j][i]).OnlyEnforceIf(chosen_word_var[w])
+for k in range(N_words):
+    for w in range(len(words)):
+        for i in range(5):
+            for j in range(len(abc)):   
+                model.Add( word_var[k,i,j] == word_to_numb(words[w])[j][i]).OnlyEnforceIf(chosen_word_var[k,w])
              
 #choose one word
-model.Add( sum(chosen_word_var[w] for w in range(len(words))) == 1 )
+for k in range(N_words):
+    model.Add( sum(chosen_word_var[k,w] for w in range(len(words))) == 1 )
+    
+#Cannot repeat a letter
+for j in range(len(abc)):
+    model.Add( sum(word_var[k,i,j] for k in range(N_words) for i in range(5)) <=1 )
+
+            
              
 solver = cp_model.CpSolver()
 solver.parameters.enumerate_all_solutions = False
@@ -56,16 +76,21 @@ status = solver.Solve(model)
 
 print(status==cp_model.OPTIMAL)
 
-for i in range(len(words)):
-    if solver.Value(chosen_word_var[i])==1:
-        result_word_index = i
-        print(i)
+result_words_index = []
+for k in range(N_words):
+    for i in range(len(words)):
+        if solver.Value(chosen_word_var[k,i])==1:
+            result_words_index.append(i)
+            print(k, words[i])
+            
         
-result_word = ""        
-for i in range(5):
-    for j in range(len(abc)):    
-        if solver.Value(word_var[i,j])==1:
-            result_word+=d_[j]
-print(result_word)
 
-print(words[result_word_index])
+for k in range(N_words):
+    result_word = ""        
+    for i in range(5):
+        for j in range(len(abc)):    
+            if solver.Value(word_var[k,i,j])==1:
+                result_word+=d_[j]
+    print(k,": ",result_word)
+
+
